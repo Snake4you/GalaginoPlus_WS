@@ -89,8 +89,8 @@
   // Pins used for buttons
 
   #ifndef NUNCHUCK_INPUT
-    #define BTN_START_PIN   23
-    #define BTN_COIN_PIN    22      // if this is not defined, then start will act as coin & start
+    #define BTN_START_PIN   24
+    #define BTN_COIN_PIN    25      // if this is not defined, then start will act as coin & start
     #define BTN_LEFT_PIN  33
     #define BTN_RIGHT_PIN 14
     #define BTN_DOWN_PIN  16
