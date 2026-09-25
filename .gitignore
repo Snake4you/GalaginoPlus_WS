@@ -25,3 +25,4 @@ source/src/machines/*/*_spritemap.h
 *.swp
 *~
 .DS_Store
+*.zip
