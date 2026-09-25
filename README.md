@@ -96,6 +96,24 @@ You can select the games in the machines.h file.
 You can use the same hardware recommended by Till Harbaum or by Speckhoiler.
 I'll soon publish a project that allows 3D printer owners to assemble a new Galagino more easily than Till Harbaum's project, while still using the same hardware.
 
+### Waveshare ESP32-S3-Touch-LCD-1.69 (ST7789V2, 240x280)
+This fork adds dedicated support for the **Waveshare ESP32-S3-Touch-LCD-1.69** board:
+- **MCU**: ESP32-S3 (240MHz, native USB-CDC)
+- **Display**: ST7789V2 SPI, 240x280 pixels, IPS
+- **SPI Host**: `SPI2_HOST` (FSPI) with DMA
+- **Pinout**:
+  - `TFT_MOSI`: GPIO 7
+  - `TFT_SCLK`: GPIO 6
+  - `TFT_CS`: GPIO 5
+  - `TFT_DC`: GPIO 4
+  - `TFT_RST`: GPIO 8
+  - `TFT_BL`: GPIO 15
+- **Preconfigured PlatformIO Environment**:
+  ```bash
+  pio run -e release_waveshare_esp32_s3_lcd_169 -t upload
+  ```
+
+
 
 ## Software
 
