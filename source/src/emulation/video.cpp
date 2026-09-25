@@ -38,7 +38,9 @@ static spi_device_interface_config_t if_cfg {
 #endif
 
 // Use MADCTL macro to simplify TFT FLIPs
-#ifdef TFT_ILI9341
+#ifdef TFT_MADCTL
+  #define MADCTL_DEFAULT (TFT_MADCTL)
+#elif defined(TFT_ILI9341)
   #ifdef TFT_VFLIP
     #define MADCTL_DEFAULT (TFT_MAC ^ 0xc0)
   #else
@@ -52,6 +54,14 @@ static spi_device_interface_config_t if_cfg {
     // 0x80 bottom to top + 0x40 right to left
     #define MADCTL_DEFAULT (0xc0)
   #endif
+#endif
+
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(ESP32S3) || defined(ARDUINO_ESP32_S3)
+  #define LCD_SPI_HOST SPI2_HOST
+#elif defined(VSPI_HOST)
+  #define LCD_SPI_HOST VSPI_HOST
+#else
+  #define LCD_SPI_HOST SPI2_HOST
 #endif
 
 spi_bus_config_t bus_cfg{
@@ -104,7 +114,11 @@ static const uint8_t init_cmd[] = {
   0x36, 1, MADCTL_DEFAULT,
   0x2a, 4, W16(0), W16(240),        // Column addr set, XSTART = 0, XEND = 240     
   0x2b, 4, W16(0), W16(320),        // Row addr set, YSTART = 0, YEND = 320
+#ifdef TFT_IPS
+  0x21, 0,                          // INV ON
+#else
   0x20, 0,                          // INV OFF
+#endif
   0xff, 10,                         // 10 ms delay
   0x13, 0,                          // Normal display on
   0xff, 10,                         // 10 ms delay
@@ -116,6 +130,12 @@ static const uint8_t init_cmd[] = {
 
 
 Video::Video() {
+  dma_active = 0;
+  dma_buffer = NULL;
+  handle = NULL;
+}
+
+void Video::begin(void) {
   pinMode(TFT_CS, OUTPUT);
   digitalWrite(TFT_CS, HIGH); // Deselect
   pinMode(TFT_DC, OUTPUT);
@@ -123,33 +143,29 @@ Video::Video() {
 
   // allocate a background buffer which is kept untouched during DMA transfer
   dma_buffer = (unsigned char*)heap_caps_malloc(240*8*2, MALLOC_CAP_DMA);
+  Serial.printf("[Video] dma_buffer allocated: %p\n", dma_buffer);
 
-  // 40Mhz is max possible rate with esp32
-  // 40Mhz = 2.5MPix/s. A frame has 64512 pixels
-  // -> max 38 frames/s = 25.8ms/frame
-#ifdef VSPI_HOST
-  spi_bus_initialize(VSPI_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
-  spi_bus_add_device(VSPI_HOST, &if_cfg, &handle);
-#else  
-  spi_bus_initialize(SPI1_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
-  spi_bus_add_device(SPI1_HOST, &if_cfg, &handle);
-#endif
+  esp_err_t ret1 = spi_bus_initialize(LCD_SPI_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
+  Serial.printf("[Video] spi_bus_initialize(host=%d): %d (%s)\n", LCD_SPI_HOST, ret1, esp_err_to_name(ret1));
+  esp_err_t ret2 = spi_bus_add_device(LCD_SPI_HOST, &if_cfg, &handle);
+  Serial.printf("[Video] spi_bus_add_device: %d (%s)\n", ret2, esp_err_to_name(ret2));
 
   // trigger hardware reset
   if (TFT_RST >= 0)
   {
+    Serial.printf("[Video] Hardware reset on pin %d\n", TFT_RST);
     pinMode(TFT_RST, OUTPUT);
     digitalWrite(TFT_RST, LOW);
     delay(100);
     digitalWrite(TFT_RST, HIGH);
     delay(200);
   } else {
+    Serial.println("[Video] Software reset");
     sendCommand(0x01, NULL, 0);
     delay(150);
   }
-}
 
-void Video::begin(void) {
+  Serial.println("[Video] Sending init commands...");
   uint8_t cmd;
   const uint8_t *addr = init_cmd;
   while(cmd = *addr++) {
@@ -160,24 +176,26 @@ void Video::begin(void) {
     } else
       delay(num);
   }
+  Serial.println("[Video] Init commands sent.");
 
-  // write 320x240 16 bit words to zero (black)
+  // write full screen 16 bit words to zero (black)
   digitalWrite(TFT_CS, LOW);
-  setAddrWindow(0, 0, 240, 320);
+  setAddrWindow(0, 0, TFT_WIDTH, TFT_HEIGHT);
 
   memset(dma_buffer, 0, 240*4*2);   // 4 lines per transfer, bytes must be less than 224*8*2
-  for(int i=0;i<320/4;i++) {
+  for(int i=0; i < TFT_HEIGHT/4; i++) {
     transaction.flags = 0;
     transaction.length = 240*4*16; // Length in bits
     transaction.tx_buffer = (const void *)dma_buffer;
     spi_device_transmit(handle, &transaction);
   }
 
-  // set active screen area to centered 224x288 pixels
-  setAddrWindow(TFT_X_OFFSET, TFT_Y_OFFSET, 224, 288);
+  // set active screen area to centered 224x(TFT_SCREEN_ROWS*8) pixels
+  setAddrWindow(TFT_X_OFFSET, TFT_Y_OFFSET, 224, TFT_SCREEN_ROWS * 8);
 
   // enable backlight if pin is specified
 #ifdef TFT_BL
+  Serial.printf("[Video] Setting backlight pin %d to %d\n", TFT_BL, TFT_BL_LEVEL);
   pinMode(TFT_BL, OUTPUT);
   digitalWrite(TFT_BL, TFT_BL_LEVEL);
 #endif
@@ -231,18 +249,18 @@ void Video::write(uint16_t *colors, uint32_t len) {
 }
 
 void Video::setViewport(uint16_t width) {
-  if(width != 240) width = 224;
+  if(width != TFT_WIDTH) width = 224;
   if(width == viewport_width) return;
 
   if(dma_active)
     spi_device_get_trans_result(handle, &r_trans, portMAX_DELAY);
 
-  if(viewport_width == 240 && width == 224) {
+  if(viewport_width == TFT_WIDTH && width == 224) {
     memset(dma_buffer, 0, 8 * 8 * 2);
-    const uint16_t side_x[2] = { 0, 232 };
+    const uint16_t side_x[2] = { 0, (uint16_t)(TFT_WIDTH - 8) };
     for(int side = 0; side < 2; side++) {
-      setAddrWindow(side_x[side], TFT_Y_OFFSET, 8, 288);
-      for(int strip = 0; strip < 36; strip++) {
+      setAddrWindow(side_x[side], TFT_Y_OFFSET, 8, TFT_SCREEN_ROWS * 8);
+      for(int strip = 0; strip < TFT_SCREEN_ROWS; strip++) {
         transaction.flags = 0;
         transaction.length = 8 * 8 * 16;
         transaction.tx_buffer = dma_buffer;
@@ -251,7 +269,7 @@ void Video::setViewport(uint16_t width) {
     }
   }
 
-  setAddrWindow((240 - width) / 2, TFT_Y_OFFSET, width, 288);
+  setAddrWindow((TFT_WIDTH - width) / 2, TFT_Y_OFFSET, width, TFT_SCREEN_ROWS * 8);
   viewport_width = width;
   dma_active = 0;
 }
@@ -271,13 +289,16 @@ void Video::writeCommand(uint8_t cmd) {
 }
 
 void Video::setAddrWindow(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
+  uint16_t x0 = x + TFT_COL_OFFSET;
+  uint16_t y0 = y + TFT_ROW_OFFSET;
+
   writeCommand(0x2A); // Column address set, same command for ili9341 and st7789
-  write16(x);
-  write16(x + w - 1);
+  write16(x0);
+  write16(x0 + w - 1);
 
   writeCommand(0x2B); // Row address set, same command for ili9341 and st7789
-  write16(y);
-  write16(y + h - 1);
+  write16(y0);
+  write16(y0 + h - 1);
 
   writeCommand(0x2C); // Write to RAM, same command for ili9341 and st7789
 }

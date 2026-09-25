@@ -2,7 +2,7 @@
 #define _CONFIG_H_
 
 // game config
-#define MASTER_ATTRACT_MENU_TIMEOUT  1000 * 20  // start games while sitting idle in menu for 20 seconds, undefine to disable
+#define MASTER_ATTRACT_MENU_TIMEOUT  1000 * 5   // start games while sitting idle in menu for 5 seconds, undefine to disable
 #define MASTER_ATTRACT_GAME_TIMEOUT  60000 * 5  // restart after 5 minutes
 
 // se definito, l'audio resta muto quando un gioco viene avviato da solo
@@ -33,9 +33,75 @@
   #define VIDEO_HALF_RATE
 #endif
 
+// esp32 model config
+//#define CHEAP_YELLOW_DISPLAY_CONF
+//#define WAVESHARE_ESP32_S3_LCD_169
+
+#ifdef WAVESHARE_ESP32_S3_LCD_169
+  #define TFT_WIDTH       240
+  #define TFT_HEIGHT      280
+  #define TFT_COL_OFFSET  0
+  #define TFT_ROW_OFFSET  20
+  #define TFT_SCREEN_ROWS 35
+  #define TFT_ROW_START   0
+
+  #define TFT_X_OFFSET    8
+  #define TFT_Y_OFFSET    0
+
+  #define TFT_CS          5
+  #define TFT_DC          4
+  #define TFT_RST         8
+  #define TFT_BL          15
+  #define TFT_BL_LEVEL    HIGH
+
+  #define TFT_MOSI        7
+  #define TFT_SCLK        6
+  #define TFT_MISO        -1
+
+  #define TFT_IPS         // Inversion ON (0x21) for ST7789 IPS
+  #define TFT_MADCTL      0x00
+
+  // No buttons needed (Attract Mode only)
+  #define BTN_START_PIN   -1
+  #define BTN_LEFT_PIN    -1
+  #define BTN_RIGHT_PIN   -1
+  #define BTN_DOWN_PIN    -1
+  #define BTN_UP_PIN      -1
+  #define BTN_FIRE_PIN    -1
+#endif
+
+#ifndef TFT_WIDTH
+#define TFT_WIDTH         240
+#endif
+
+#ifndef TFT_HEIGHT
+#define TFT_HEIGHT        320
+#endif
+
+#ifndef TFT_COL_OFFSET
+#define TFT_COL_OFFSET    0
+#endif
+
+#ifndef TFT_ROW_OFFSET
+#define TFT_ROW_OFFSET    0
+#endif
+
+#ifndef TFT_SCREEN_ROWS
+#define TFT_SCREEN_ROWS   36
+#endif
+
+#ifndef TFT_ROW_START
+#define TFT_ROW_START     0
+#endif
+
 // x and y offset of 224x288 pixels inside the 240x320 screen
+#ifndef TFT_X_OFFSET
 #define TFT_X_OFFSET      8
+#endif
+
+#ifndef TFT_Y_OFFSET
 #define TFT_Y_OFFSET      16
+#endif
 
 // led config
 //#define LED_PIN           18 // pin used for optional WS2812 stripe
@@ -44,9 +110,6 @@
 // audio config
 //#define SND_DIFF   	 // set to output differential audio on GPIO25 _and_ inverted on GPIO26
 #define SND_LEFT_CHANNEL // Use GPIO 26 for audio
-
-// esp32 model config
-//#define CHEAP_YELLOW_DISPLAY_CONF
 
 #ifdef CHEAP_YELLOW_DISPLAY_CONF
   #define TFT_CS          15
@@ -73,7 +136,7 @@
   #define BTN_FIRE_PIN    4
 #endif
 
-#ifndef CHEAP_YELLOW_DISPLAY_CONF
+#if !defined(CHEAP_YELLOW_DISPLAY_CONF) && !defined(WAVESHARE_ESP32_S3_LCD_169)
   #ifndef NUNCHUCK_INPUT
     #define TFT_CS        5
     #define TFT_DC        32

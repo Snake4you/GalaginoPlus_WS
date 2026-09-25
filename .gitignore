@@ -1,0 +1,27 @@
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+.clangd/
+
+# Binaries and Flash dumps
+*.bin
+*.elf
+*.map
+firmware/
+firmware_*/
+
+# ROMs and generated assets
+romszip/
+romconv/roms/
+source/src/machines/*/*_rom.h
+source/src/machines/*/*_cmap.h
+source/src/machines/*/*_tilemap.h
+source/src/machines/*/*_spritemap.h
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store

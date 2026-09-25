@@ -83,15 +83,17 @@ bool doReset = false;
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("Galagino"); 
+  delay(1500); // Allow USB CDC to enumerate
+  Serial.println("=====================================");
+  Serial.println("     Galagino Plus S3 Starting       ");
+  Serial.println("=====================================");
 
-  Serial.print("ESP-IDF "); 
+  Serial.print("ESP-IDF: "); 
   Serial.println(ESP_IDF_VERSION, HEX); 
 
 #ifdef WORKAROUND_I2S_APLL_PROBLEM
   Serial.println("I2S APLL workaround active"); 
 #endif
-  // this should not be needed as the CPU runs by default on 240Mht nowadays
   setCpuFrequencyMhz(240);
 
   Serial.print("Free heap: "); Serial.println(ESP.getFreeHeap());
@@ -102,6 +104,8 @@ void setup() {
   frame_buffer = (unsigned short*)malloc(240 * 8 * 2);
   sprite_buffer = (sprite_S*)malloc(128 * sizeof(sprite_S));
   memory = (uint8_t *)malloc(RAMSIZE);
+  Serial.printf("Buffers allocated: fb=%p, spr=%p, mem=%p\n", frame_buffer, sprite_buffer, memory);
+
   currentMachine = machines[0];
   
   for (int i = 0; i < machinesCount; i++)
@@ -124,8 +128,10 @@ void setup() {
   led.init();
 #endif
 
+  Serial.println("Initializing Video...");
   video.begin();
-  Serial.print("Free heap: "); Serial.println(ESP.getFreeHeap());
+  Serial.println("Video initialized successfully!");
+  Serial.print("Free heap after video: "); Serial.println(ESP.getFreeHeap());
 }
 
 void loop(void) {  
@@ -178,18 +184,19 @@ void updateAudioVideo(void) {
 #ifndef VIDEO_HALF_RATE
   videoHalfRate = currentMachine->useVideoHalfRate() && !isMenu;
 #endif
-  const unsigned short renderWidth = (!isMenu && currentMachine->machineType() == MCH_SCREGG) ? 240 : 224;
+  const unsigned short renderWidth = (!isMenu && currentMachine->machineType() == MCH_SCREGG) ? TFT_WIDTH : 224;
   video.setViewport(renderWidth);
 
   if (!videoHalfRate) {
     // render and transmit screen at once as the display running at 80Mhz can update at full 60 hz game frame
-    for(int c = 0; c < 36; c += 6) {
-      for (int i = 0; i < 6; i++) {
-        renderRow(c + i, isMenu); video.write(frame_buffer, renderWidth * 8);
-      }     
+    const int audio_step = (TFT_SCREEN_ROWS % 6 == 0) ? 6 : 5;
+    for(int r = 0; r < TFT_SCREEN_ROWS; r++) {
+      renderRow(r + TFT_ROW_START, isMenu);
+      video.write(frame_buffer, renderWidth * 8);
 
-      // audio is updated 6 times per 60 Hz frame
-      audio.transmit();
+      if ((r + 1) % audio_step == 0) {
+        audio.transmit();
+      }
     } 
  
     emulation_videoRendered();
@@ -206,16 +213,17 @@ void updateAudioVideo(void) {
   }
   else {
     // render and transmit screen in two halfs as the display running at 40Mhz can only update every second 60 hz game frame
+    const int half_rows = TFT_SCREEN_ROWS / 2;
     for(int half = 0; half < 2; half++) {
-      for(int c = 18 * half; c < 18 * (half + 1); c += 3) {
-        renderRow(c + 0, isMenu); video.write(frame_buffer, renderWidth * 8);
-        renderRow(c + 1, isMenu); video.write(frame_buffer, renderWidth * 8);
-        renderRow(c + 2, isMenu); video.write(frame_buffer, renderWidth * 8);
+      int start_r = half ? half_rows : 0;
+      int end_r   = half ? TFT_SCREEN_ROWS : half_rows;
+      for(int r = start_r; r < end_r; r++) {
+        renderRow(r + TFT_ROW_START, isMenu);
+        video.write(frame_buffer, renderWidth * 8);
 
-        // audio is refilled 6 times per screen update. The screen is updated
-        // every second frame. So audio is refilled 12 times per 30 Hz frame.
-        // Audio registers are udated by CPU3 two times per 30hz frame.
-        audio.transmit();
+        if ((r + 1) % 3 == 0) {
+          audio.transmit();
+        }
       } 
     
       emulation_videoRendered();
@@ -239,7 +247,7 @@ void renderRow(short row, bool isMenu) {
     menu.render_row(row);
   } 
   else {
-    const unsigned short width = currentMachine->machineType() == MCH_SCREGG ? 240 : 224;
+    const unsigned short width = currentMachine->machineType() == MCH_SCREGG ? TFT_WIDTH : 224;
     memset(frame_buffer, 0, 2 * width * 8);
     currentMachine->render_row(row);
   }
